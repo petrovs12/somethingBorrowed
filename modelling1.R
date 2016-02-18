@@ -12,7 +12,8 @@ dummiesSeries <- xts(
   ,order.by = dummies[,date])
 
 martaEncoding <- "[A-X].*_*[A-X].*"
-goodCols <- setdiff(grep(martaEncoding,colnames(dummies),value = T),c("Speedy_Working_Day","Working_Holiday"))
+goodCols <- setdiff(grep(martaEncoding,colnames(dummies),value = T),c("Speedy_Working_Day","Working_Saturday"))
+goodCols
 
 grep("[A-X].*_*[A-X].*","Asdkf_Balsdfj")
 
@@ -134,7 +135,7 @@ speedyCast[,summary(`economy.1_2-1 ПЛОВДИВ_2-4 ВАРНА`),with=F]
 # speedyCast$"economy.1_2-1 ПЛОВДИВ_2-4 ВАРНА"
 # speedyCast$"economy_2-1 ПЛОВДИВ_2-4 ВАРНА"
 
-targetOrigin <- 21#Plovdiv
+targetOrigin <- 22#Plovdiv
 targetDest <- 24#Varna
 
 
@@ -146,10 +147,14 @@ speedyCast[6:10,1:5,with=F]
 # explore plovdiv-varna ---------------------------------------------------
 
 colnames(speedyCast)
-targetVolumedStable <- speedyCast[,
-                                  paste0("economy_sum","_",as.character(targetOrigin),"_",as.character(targetDest))
+expressOrEcon <- "express_sum"
+targetVolumedStable <- speedyCast[order(time_id)][,
+                                  paste0(expressOrEcon,"_",as.character(targetOrigin),"_",as.character(targetDest))
                                   ,with=F
                                   ]
+targetOrigin
+targetVolumeStable <- speedy[order(time_id)][targetOrigin==org&targetDest==dst,economy]
+targetVolumeStable
 
 
 
@@ -157,18 +162,25 @@ tsSeries <- xts(cbind(
   # speedyCast$"economy_2-2 СОФИЯ_2-1 ПЛОВДИВ",
   # speedyCast$"economy_sum_2-4 ВАРНА_2-1 ПЛОВДИВ",
   targetVolumedStable,
-  speedyCast[,.(isAnyHoliday,Speedy_Working_Day,Working_Saturday)]),strptime(speedyCast$time_id,dayFormat))
+  speedyCast[,.(isAnyHoliday,Speedy_Working_Day)]),strptime(speedyCast$time_id,dayFormat))
+tsSeries[,-1]
 
+
+oppositeVolumesData <- speedyCast[order(time_id)][,
+                                  paste0(expressOrEcon,"_",as.character(targetDest),"_",as.character(targetOrigin))
+                                  ,with=F
+                                  ]
 # speedyAggByOrigin[]
+
 tsSeriesAggregated <-lag.xts(
   xts(
-  # cbind(
-    speedyCast[,.(totalEcon,totalExpress)]
-    # ,
-  #           totalOrigin=speedyAggByOrigin[order(time_id)][org==targetOrigin,total],
-  #           totalDest=speedyAggByDestination[order(time_id)][dst==targetDest,total]
-  # )
-      , strptime(speedyCast$time_id,dayFormat)) ,1) %>% na.fill(0)
+  cbind(
+    speedyCast[order(time_id)][,.(totalEcon,totalExpress)]
+    ,totalOrigin=speedyAggByOrigin[order(time_id)][org==targetOrigin,.(totExpOrigin=totalExpress,totEconOrigin=totalEcon)],
+            totalDest=speedyAggByDestination[order(time_id)][dst==targetDest,.(totEconOrigin=totalExpress,totEconDest=totalEcon)],
+    oppositeVolumesData
+  )
+      , strptime(speedyCast[order(time_id)]$time_id,dayFormat)) ,1) %>% na.fill(0)
 
 
 # plot.xts(xtsSeries["2015/"])
@@ -189,7 +201,6 @@ y <- tsSeries[,1]
 # fit <- auto.arima(y,xreg = tsSeries[,2:3],seasonal = TRUE)
 # summary(fit)
 # fc <- forecast(fit, xreg=cbind(zf,holidayf), h=100)
-# 
 # 
 # taylor.fit <- msts(y,seasonal.periods = c(7,30,365))
 # plot(taylor.fit)
@@ -215,11 +226,12 @@ getLastWeek <- function(x) {
     as.numeric(y[last(indx)])
   }}
 
+
 # getLastWeek(1)
 # getLastWeek(90)
-
 # getLastWeekSeriesData <- sapply(1:nrow(y),getLastWeek)
 # lastWeekSeries <- xts(getLastWeekSeriesData,order.by = index(y),whc=1)
+
 getLastMonth <- function(x) {
   currInd <- .index(y[x]) 
   dayMonthIdx <- .indexmday(y[x]) 
@@ -288,8 +300,8 @@ additionalYBasedData <- constructAdditionalData(y)
 (index(additionalYBasedData)==index(y) )%>% all()
 
 
-ytrainingPeriod <- "2015-05-01/2015-08-17"
-ytestingPeriod <- "2015-08-18/2015-10-14"
+ytrainingPeriod <- "2015-05-01/2015-09-17"
+ytestingPeriod <- "2015-09-18/2015-10-14"
 yhat <- ts(coredata(tsSeries[ytrainingPeriod,1]),start=2013,frequency = 7)
 # yhat <- tsSeries[ytrainingPeriod,1]
 yhattest <- tsSeries[ytestingPeriod,1]
@@ -297,16 +309,15 @@ yhattest <- tsSeries[ytestingPeriod,1]
 nrow(yhat)+nrow(yhattest)-nrow(tsSeries)
 
 
-holidayPeriod <- "2015-04-28/2015-08-19"
-holidayPeriodTest <- "2015-08-15/2015-10-16"
-embedLen <- 6
+holidayPeriod <- "2015-04-29/2015-09-19"
+holidayPeriodTest <- "2015-09-16/2015-10-16"
+embedLen <- 5
 holidayRelated <- embed(tsSeries[holidayPeriod,-1],embedLen)
 holidayRelatedTest <-  embed(tsSeries[holidayPeriodTest,-1],embedLen)
 nrow(holidayRelated)+nrow(holidayRelatedTest)-nrow(tsSeries)
-  
-indexTZ(additionalYBasedData) = Sys.getenv("TZ")
 
 
+indexTZ(additionalYBasedData) = Sys.getenv("TZ")# timezone bug on next lines without this
 additionalYBasedDataTrain <- additionalYBasedData[ytrainingPeriod]
 additionalYBasedDataTest <- additionalYBasedData[ytestingPeriod]
 
@@ -316,10 +327,15 @@ nrow(holidayRelatedTest)==nrow(yhattest)
 
 # add overall volume-past 2 days ------------------------------------------------------
 
-aggregateStatsPeriod<-"2015-05-01/2015-08-17"
-aggregateStatsTestPeriod<-"2015-08-18/2015-10-14"
-aggregateStats2lags <- (merge.xts(tsSeriesAggregated,
-                                  lag.xts(tsSeriesAggregated,1)) %>% na.fill(0))
+aggregateStatsPeriod<-"2015-05-01/2015-09-17"
+aggregateStatsTestPeriod<-"2015-09-18/2015-10-14"
+aggregateStats2lags <- (
+  merge.xts(tsSeriesAggregated,
+                                 merge.xts( 
+                                  lag.xts(tsSeriesAggregated,1),
+                                  lag.xts(tsSeriesAggregated,2))
+                                 
+) %>% na.fill(0))
 aggregateStatsTrain <- aggregateStats2lags[aggregateStatsPeriod]
 aggregateStatsTest <- aggregateStats2lags[aggregateStatsTestPeriod]
 
@@ -335,32 +351,48 @@ nrow(holidayRelated)==nrow(yhat)
 # regressorTable <- cbind( coredata(holidayRelated),coredata(aggregateStatsTrain))
 # regressorTabletest <- cbind(coredata(holidayRelatedTest),coredata(aggregateStatsTest))
 
-regressorTable <- cbind( coredata(additionalYBasedDataTrain) , coredata(holidayRelated),coredata(aggregateStatsTrain))
+regressorTable <- cbind( 
+  coredata(additionalYBasedDataTrain)
+  ,          coredata(holidayRelated)
+  ,coredata(aggregateStatsTrain)
+)
+
 regressorTabletest <- cbind(
-  coredata(additionalYBasedDataTest)
-  ,coredata(holidayRelatedTest),coredata(aggregateStatsTest))
+  coredata(additionalYBasedDataTest)# ,
+  , coredata(holidayRelatedTest)
+  ,coredata(aggregateStatsTest)
+)
+
 ncol(regressorTable)==ncol(regressorTabletest)
 nrow(regressorTable)
 nrow(regressorTabletest)
 ncol(regressorTabletest)
+ncol(regressorTabletest)
 
 mod <- auto.arima(yhat,xreg = regressorTable,seasonal = T,ic="aic",test="adf",allowmean = TRUE,allowdrift = TRUE,
                   max.p=5,max.q = 5,max.d=5,max.D=6,max.P=5,max.Q = 8)
-mod <- auto.arima(yhat,xreg = regressorTable,seasonal = T,allowmean = TRUE,allowdrift = TRUE)
+# mod <- auto.arima(yhat,xreg = regressorTable,seasonal = T,allowmean = TRUE,allowdrift = TRUE)
 summary(mod)
 # fct <- forecast(mod,xreg=embed(tsSeries['2015-08-29/',2:3],4))
+
 fct <- forecast(mod,xreg=regressorTabletest)
 plot(resid(fct))
 
-matplot(cbind(coredata(fct$mean),coredata(yhattest),coredata(fct$upper[,2])
-              # ,fct$upper[,1]
-),type = "l",col = c("blue","red","green"))
+# matplot(cbind(coredata(fct$mean),coredata(yhattest),coredata(fct$upper[,2])
+#               # ,fct$upper[,1]
+# ),type = "l",col = c("blue","red","green"))
+# matplot(cbind(coredata(fct$mean),coredata(yhattest)
+#               # ,fct$upper[,1]
+# ),type = "l",col = c("blue","red"))
 # auto.arima()
-plot(fct$mean-coredata(yhattest))
-plot(density(fct$mean-coredata(yhattest)))
-plot(abs(fct$mean/coredata(yhattest)),ylim=c(0,1))
+# plot(fct$mean-coredata(yhattest))
+# plot(density(fct$mean-coredata(yhattest)))
+# plot(abs(fct$mean/coredata(yhattest)),ylim=c(0,1))
+pred <- pmax(0,fct$mean)
 
+matplot(cbind(pred,coredata(yhattest)
+              # ,fct$upper[,1]
+),type = "l",col = c("blue","red"))
 
-
-
-
+err <- sum(abs((pred+3)/coredata(yhattest+3)))/sum(yhattest+3)
+err
