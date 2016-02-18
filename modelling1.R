@@ -15,7 +15,7 @@ martaEncoding <- "[A-X].*_*[A-X].*"
 goodCols <- setdiff(grep(martaEncoding,colnames(dummies),value = T),c("Speedy_Working_Day","Working_Saturday"))
 goodCols
 
-grep("[A-X].*_*[A-X].*","Asdkf_Balsdfj")
+# grep("[A-X].*_*[A-X].*","Asdkf_Balsdfj")
 
 #summarise all holidays- kind of crude, better to split by religious/national and by apriori "impact
 # e.g. easter, christmass, new year, 3rd march etc national ones are stronger than rest but meh
@@ -24,7 +24,7 @@ dummies[,isAnyHoliday:=apply(.SD,1,max),.SDcols= goodCols ]# since 0 and 1 max w
 # dummies[,dtime:=strptime(time_id,dayFormat,timezone)]
 
 nrow(dummies)
-grep(hubPattern,r)
+# grep(hubPattern,r)
 speedy <- read_excel("sectors.xlsx") %>% as.data.table()
 
 speedy[, time_id:=as.character(time_id) ]
@@ -148,13 +148,22 @@ speedyCast[6:10,1:5,with=F]
 
 colnames(speedyCast)
 expressOrEcon <- "express_sum"
-targetVolumedStable <- speedyCast[order(time_id)][,
+# expressOrEcon <- "economy_sum"
+targetVolumedStable <- 
+  speedyCast[order(time_id)][,
                                   paste0(expressOrEcon,"_",as.character(targetOrigin),"_",as.character(targetDest))
                                   ,with=F
                                   ]
+
+testpv <- 
+  speedyCast[order(time_id)][,
+                                  paste0("express_sum","_",as.character(targetOrigin),"_",as.character(targetDest))
+                                  ,with=F
+                                  ]
+  (targetVolumedStable-testpv)[1:30]
 targetOrigin
-targetVolumeStable <- speedy[order(time_id)][targetOrigin==org&targetDest==dst,economy]
-targetVolumeStable
+# targetVolumeStable <- speedy[order(time_id)][targetOrigin==org&targetDest==dst,economy]
+targetVolumeStable[1:30]
 
 
 
@@ -300,7 +309,7 @@ additionalYBasedData <- constructAdditionalData(y)
 (index(additionalYBasedData)==index(y) )%>% all()
 
 
-ytrainingPeriod <- "2015-05-01/2015-09-17"
+ytrainingPeriod <- "2015-02-01/2015-09-17"
 ytestingPeriod <- "2015-09-18/2015-10-14"
 yhat <- ts(coredata(tsSeries[ytrainingPeriod,1]),start=2013,frequency = 7)
 # yhat <- tsSeries[ytrainingPeriod,1]
@@ -309,7 +318,7 @@ yhattest <- tsSeries[ytestingPeriod,1]
 nrow(yhat)+nrow(yhattest)-nrow(tsSeries)
 
 
-holidayPeriod <- "2015-04-29/2015-09-19"
+holidayPeriod <- "2015-01-30/2015-09-19"
 holidayPeriodTest <- "2015-09-16/2015-10-16"
 embedLen <- 5
 holidayRelated <- embed(tsSeries[holidayPeriod,-1],embedLen)
@@ -327,7 +336,7 @@ nrow(holidayRelatedTest)==nrow(yhattest)
 
 # add overall volume-past 2 days ------------------------------------------------------
 
-aggregateStatsPeriod<-"2015-05-01/2015-09-17"
+aggregateStatsPeriod<-"2015-02-01/2015-09-17"
 aggregateStatsTestPeriod<-"2015-09-18/2015-10-14"
 aggregateStats2lags <- (
   merge.xts(tsSeriesAggregated,
@@ -394,5 +403,12 @@ matplot(cbind(pred,coredata(yhattest)
               # ,fct$upper[,1]
 ),type = "l",col = c("blue","red"))
 
-err <- sum(abs((pred+3)/coredata(yhattest+3)))/sum(yhattest+3)
+err <- sum(abs((pred)-coredata(yhattest)))/sum(yhattest)
 err
+
+tseries::jarque.bera.test(resid(fct))
+plot(density(resid(fct)))
+plot(resid(fct))
+pacf(resid(fct))
+acf(resid(fct))
+acf(yhat)
