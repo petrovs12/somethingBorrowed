@@ -1,7 +1,7 @@
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load("readxl","stringr","lubridate","data.table","zoo","xts","dplyr","magrittr","forecast")
 # timezone <- "EST"
-timezone <- 
+# timezone <- 
   dayFormat <- "%Y%m%d"
 
 # read holidays---
