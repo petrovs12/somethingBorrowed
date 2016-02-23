@@ -1,5 +1,5 @@
 if (!require("pacman")) install.packages("pacman")
-pacman::p_load("readxl","stringr","lubridate","data.table","zoo","xts","dplyr","magrittr","forecast")
+pacman::p_load("readxl","stringr","lubridate","data.table","zoo","xts","dplyr","magrittr","forecast","doParallel","glmnet","Matrix")
 # timezone <- "EST"
 # timezone <- 
   dayFormat <- "%Y%m%d"
@@ -58,7 +58,7 @@ table(speedy[,.N,by=time_id]$N)
 
 speedyWithHolidays <- merge(speedy,dummies,by="time_id",all.x = TRUE,all.y = FALSE)
 
-# ups!!!- sanity check fails!!! (not by much though)!!!!!!!!!!!!- most still 0s, am i wrong?
+# ups!!!- sanity check fails!!! (not by much though)!!!!!!!!!!!!- most still 0s, am i wrong?-------
 speedyWithHolidays[Speedy_Working_Day==0,summary(economy)]
 speedyWithHolidays[Speedy_Working_Day==0,table(economy)]
 speedyWithHolidays[Speedy_Working_Day==0,table(express)]
@@ -102,6 +102,7 @@ speedyAggByOrigin <- speedy[,.(time_id,
                                total=sum(total),
                                totalEcon=sum(economy),
                                totalExpress=sum(express)),by=.(time_id,org)]
+
 speedyAggByDestination <- speedy[,.(time_id,
                                     dst, 
                                     total=sum(total),
@@ -167,21 +168,20 @@ expressOrEcon <- "express_sum"
 # expressOrEcon <- "economy_sum"
 # expressOrEcon <- "total_sum"
 targetVolumedStable <- 
-  speedyCast[order(time_id)][,
-                                  paste0(expressOrEcon,"_",as.character(targetOrigin),"_",as.character(targetDest))
-                                  ,with=F
-                                  ]
+  speedyCast[order(time_id)][,paste0(expressOrEcon,"_",as.character(targetOrigin),"_",as.character(targetDest)),with=F]
 
 #check
-testpv <- 
-  speedyCast[order(time_id)][,
+testpv <-  speedyCast[order(time_id)][,
                                   paste0("express_sum","_",as.character(targetOrigin),"_",as.character(targetDest))
                                   ,with=F
                                   ]
+
   (targetVolumedStable-testpv)[1:30]
 targetOrigin
 # targetVolumeStable <- speedy[order(time_id)][targetOrigin==org&targetDest==dst,economy]
 targetVolumeStable[1:30]
+
+#24 may i 6 sept are on same date and bridges are all same always, same as 3.3 and 22.9 todo
 
 
 
@@ -189,8 +189,15 @@ tsSeries <- xts(cbind(
   # speedyCast$"economy_2-2 СОФИЯ_2-1 ПЛОВДИВ",
   # speedyCast$"economy_sum_2-4 ВАРНА_2-1 ПЛОВДИВ",
   targetVolumedStable,
-  speedyCast[,.(isAnyHoliday,Speedy_Working_Day
-                # ,Working_Saturday #and whatever else
+  speedyCast[,.(
+    isAnyHoliday ,
+    Christmas_Day,
+    Christmas_Eve,
+    Speedy_Working_Day
+    , Monday_Holiday
+    , Thursday_Holiday, Wednesday_Holiday, 
+    Thursday_Holiday,Friday_Holiday,Saturday_Holiday,Sunday_Holiday 
+    ,Working_Saturday #and whatever else
                 )]),strptime(speedyCast$time_id,dayFormat))
 tsSeries[,-1]
 
@@ -332,8 +339,8 @@ additionalYBasedData <- constructAdditionalData(y)
 (index(additionalYBasedData)==index(y) )%>% all()
 
 # change periods here------------------
-ytrainingPeriod <- "2015-02-01/2015-09-17"
-ytestingPeriod <- "2015-09-18/2015-10-14"
+ytrainingPeriod <- "2013-10-30/2014-08-17"
+ytestingPeriod <- "2014-08-18/2014-10-10"
 #NB!!
 #construct a TS class that is suitable for Arima to detect seasonality on, 
 # though it breaks the real time indices
@@ -349,8 +356,8 @@ nrow(yhat)+nrow(yhattest)-nrow(tsSeries)
 # todo- make this simpler using datetime arithmetics, rather than doing it always by hand
 #periods mismatch due to the embedding
 
-holidayPeriod <- "2015-01-30/2015-09-19"
-holidayPeriodTest <- "2015-09-16/2015-10-16"
+holidayPeriod <- "2013-10-28/2014-08-19"
+holidayPeriodTest <- "2014-08-16/2014-10-12"
 embedLen <- 5
 holidayRelated <- embed(tsSeries[holidayPeriod,-1],embedLen)
 holidayRelatedTest <-  embed(tsSeries[holidayPeriodTest,-1],embedLen)
@@ -416,6 +423,41 @@ ncol(regressorTable)==ncol(regressorTabletest)
 # nrow(regressorTabletest)
 # ncol(regressorTabletest)
 # ncol(regressorTabletest)
+# regressorTable <- jitter(regressorTable,1e-6) 
+
+
+toKeep <- !apply(regressorTable==0,2,all)
+regressorTable <- regressorTable[,toKeep]
+regressorTabletest <- regressorTabletest[,toKeep]
+
+B <- pracma::rref(regressorTable)
+B
+
+getLIRows <- apply(B, 1, function(x){o<- which(x==1)
+if (length(o)>0) {
+  o[1]                    
+}else{
+  0
+}}) %>% setdiff(0)
+
+getLIRows
+regressorTable <- regressorTable[,getLIRows]
+regressorTabletest <- regressorTabletest[,getLIRows]
+
+
+dim(regressorTable)
+dim(regressorTabletest)
+length(yhat)
+
+#getLIRows
+# LIRows <- colnames(regressorTable)[getLIRows[getLIRows!=0]] %>%intersect(
+#   colnames(numericData)[sapply(colnames(numericData), function(x)(!min(numericData[[x]]==max(numericData[[x]]))))]
+# )
+# LIR 
+#chooseWhich <-which(getLIRows==1:ncol(transformedDataFrame))
+#chooseWhich
+# colnames(transformedDataFrame)[LIRows]
+# numericColumnsToDeleteDataInd <- which()
 
 # main call to the model.-------------------
 # sometimes this breaks, but the commented call bellow doesn't . use the commented if so
@@ -426,7 +468,14 @@ summary(mod)
 # fct <- forecast(mod,xreg=embed(tsSeries['2015-08-29/',2:3],4))
 
 fct <- forecast(mod,xreg=regressorTabletest)
+# summary(fct)
 plot(resid(fct))
+
+
+regdf <- as.data.table(regressorTable)
+regdftst <- as.data.table(regressorTabletest)
+
+
 
 # matplot(cbind(coredata(fct$mean),coredata(yhattest),coredata(fct$upper[,2])
 #               # ,fct$upper[,1]
@@ -448,9 +497,50 @@ err <- sum(abs((pred)-coredata(yhattest)))/sum(yhattest)
 err
 
 # normality check ---
-tseries::jarque.bera.test(resid(fct))
+tseries::jarque.bera.test(pred-coredata(yhattest))
+tseries::jarque.bera.test(pred-coredata(yhattest))
 plot(density(resid(fct)))
 plot(resid(fct))
 pacf(resid(fct))
 acf(resid(fct))
 acf(yhat)
+
+expressVars <- grep("express",colnames(regdf),value = T)[1:6]
+continteractionsString<-paste("~.+(",paste(expressVars,collapse="+"),")^2")#,"-",paste(expressVars,collapse="+"))
+continteractionsString
+
+# mmatr <- sparse.model.matrix(as.formula(continteractionsString),regdf)
+# mmatrtest <- sparse.model.matrix(as.formula(continteractionsString),regdftst)
+mmatr <- regressorTable
+mmatrtest <- regressorTabletest
+
+
+newy <- resid(fct)
+# doParallel::stopImplicitCluster()
+# doParallel::registerDoParallel(2)
+# fit1newest <-cv.glmnet(mmatr,newy,standardize=T,alpha=0.95,family="gaussian",
+#                        maxit=300000)
+
+
+fit1newest <-gbm.fit(mmatr,newy,distribution="tdist",n.trees = 100)
+
+predictions <- as.vector(predict(fit1newest,mmatrtest,n.trees = 100))
+newpred <-pmax(0,pred+predictions) 
+
+  
+  
+
+matplot(cbind(newpred,coredata(yhattest)
+              # ,fct$upper[,1]
+),type = "l",col = c("blue","red"))
+
+err1 <- sum(abs((newpred)-coredata(yhattest)))/sum(yhattest)
+err1
+err
+plot(newpred-yhattest)
+
+tseries::jarque.bera.test(newpred-yhattest)
+plot(density(newpred-yhattest))
+plot(newpred-yhattest)
+pacf(newpred-yhattest)
+acf(newpred-yhattest)
